@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sheets CRUD</title>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { padding: 8px; border: 1px solid #ddd; }
+        .actions { display: flex; gap: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Google Sheets CRUD</h1>
+    
+    <div class="controls">
+        <input type="text" id="search" placeholder="Search...">
+        <button onclick="loadData()">Refresh</button>
+        <button onclick="showAddForm()">Add New</button>
+    </div>
+
+    <table id="dataTable"></table>
+
+    <!-- Add/Edit Form (hidden by default) -->
+    <div id="formModal" style="display:none;">
+        <h2 id="formTitle">Edit Entry</h2>
+        <form id="dataForm">
+            <!-- Dynamic fields will be added here -->
+        </form>
+        <button onclick="saveData()">Save</button>
+        <button onclick="hideForm()">Cancel</button>
+    </div>
+
+    <script>
+        // Configuration
+        const API_KEY = 'YOUR_API_KEY';
+        const SHEET_ID = 'YOUR_SHEET_ID';
+        const SHEET_NAME = 'Sheet1';
+
+        let currentRow = null;
+
+        // Initialize Google API
+        function initClient() {
+            gapi.load('client', () => {
+                gapi.client.init({
+                    apiKey: API_KEY,
+                    discoveryDocs: [
+                        'https://sheets.googleapis.com/$discovery/rest?version=v4'
+                    ]
+                }).then(loadData);
+            });
+        }
+
+        // Load data from sheet
+        async function loadData() {
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SHEET_ID,
+                    range: `${SHEET_NAME}!A:Z`
+                });
+                
+                const headers = response.result.values[0];
+                const rows = response.result.values.slice(1);
+                renderTable(headers, rows);
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+
+        // Render table with data
+        function renderTable(headers, rows) {
+            const table = document.getElementById('dataTable');
+            table.innerHTML = `
+                <tr>${headers.map(h => `<th>${h}</th>`).join('')}<th>Actions</th></tr>
+                ${rows.map((row, index) => `
+                    <tr>
+                        ${row.map(cell => `<td>${cell}</td>`).join('')}
+                        <td>
+                            <button onclick="editRow(${index})">Edit</button>
+                            <button onclick="deleteRow(${index})">Delete</button>
+                        </td>
+                    </tr>
+                `).join('')}
+            `;
+        }
+
+        // Delete a row
+        async function deleteRow(rowIndex) {
+            if(confirm('Delete this entry?')) {
+                await gapi.client.sheets.spreadsheets.values.clear({
+                    spreadsheetId: SHEET_ID,
+                    range: `${SHEET_NAME}!A${rowIndex + 2}:Z${rowIndex + 2}`
+                });
+                loadData();
+            }
+        }
+
+        // Show add/edit form
+        function showAddForm(rowIndex = null) {
+            currentRow = rowIndex;
+            const form = document.getElementById('dataForm');
+            form.innerHTML = headers.map((header, i) => `
+                <label>${header}:</label>
+                <input type="text" id="field${i}" required>
+            `).join('');
+            
+            document.getElementById('formModal').style.display = 'block';
+        }
+
+        // Save data to sheet
+        async function saveData() {
+            const inputs = document.querySelectorAll('#dataForm input');
+            const values = Array.from(inputs).map(input => input.value);
+            
+            const range = currentRow === null ? 
+                `${SHEET_NAME}!A${document.querySelectorAll('#dataTable tr').length + 1}` :
+                `${SHEET_NAME}!A${currentRow + 2}`;
+            
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: SHEET_ID,
+                range: range,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: [values] }
+            });
+            
+            hideForm();
+            loadData();
+        }
+
+        // Initialize when page loads
+        window.onload = initClient;
+    </script>
+</body>
+</html>
